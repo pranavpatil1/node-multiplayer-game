@@ -25,6 +25,8 @@ server.listen(5000, function() {
 io.on('connection', function(socket) {
 });
 
+var core = require('./static/game_core.js');
+
 // holds the players and blocks. this will be sent to all clients
 const gameState = {
     players: {},
@@ -34,31 +36,18 @@ const gameState = {
     ]
 }
 
+var game = new game_core(game, true);
+
 // maintains the current set of socket connections
 io.on('connection', function(socket) {
   socket.on('disconnect', function() {
     delete gameState.players[socket.id];
-    console.log("Player gone", Date.now() % 1000000);
+    console.log("Player gone", socket.id);
   });
   // client requested a new player
   socket.on('new player', function() {
-    gameState.players[socket.id] = {
-      x: 300,
-      y: 300,
-      xvel: 0.0,
-      yvel: 0.0,
-      jumping: true, // if jump initiated (not falling)
-      collision: {
-        left: false,
-        right: false,
-        up: false,
-        down: false  // if player is colliding with blocks. for now only down used
-      },
-      facingRight: true, // to maintain position for xvel = 0
-      lastTime: Date.now(), // used to calc deltaTime
-      startTime: Date.now() // used for animations (so not all synced up)
-    };
-    console.log("Player joined", Date.now() % 1000000);
+    gameState.players[socket.id] = new core.character();
+    console.log("Player joined", socket.id);
   });
 
   socket.on('movement', function(data) {
@@ -70,19 +59,19 @@ io.on('connection', function(socket) {
 
     // no input or both (cancel out)
     if (!(data.left ^ data.right)) {
-      player.xvel = 0; // do nothing
+      player.vel.x = 0; // do nothing
     } else if (data.left) { // only one of them! set velocity
-      player.xvel = -speed;
+      player.vel.x = -speed;
       player.facingRight = false;
     } else if (data.right) {
-      player.xvel = speed;
+      player.vel.x = speed;
       player.facingRight = true;
     }
     
     // on the ground. can initiate jump
     if (player.collision.down) {
       if (data.up) {
-        player.yvel = -speed * 4;
+        player.vel.y = -speed * 4;
         player.jumping = true;
         player.collision.down = false;
       }
@@ -100,7 +89,7 @@ setInterval(function() {
 
         // gravity
         if (!player.collision.down) {
-          player.yvel += 20;
+          player.vel.y += 20;
         }
 
         // assume no collisions unless found later
@@ -109,24 +98,29 @@ setInterval(function() {
         // collision detection with blocks
 
         // needs to be falling (no upward, head-hitting collision)
-        if (player.yvel >= 0) {
+        if (player.vel.y >= 0) {
             for (var j in gameState.blocks) {
                 var block = gameState.blocks[j];
                 // if the bottom of the player is passing the block in this frame
-                if ((player.y + 40 <= block.y1) && (player.y + 40 + player.yvel * deltaTime >= block.y1) &&
-                        (player.x + 11 > block.x1 && player.x - 9 < block.x2)) {
+                if ((player.pos.y + 40 <= block.y1) && (player.pos.y + 40 + player.vel.y * deltaTime >= block.y1) &&
+                        (player.pos.x + 11 > block.x1 && player.pos.x - 9 < block.x2)) {
                     player.collision.down = true;
-                    player.yvel = 0;
+                    player.vel.y = 0;
                     player.jumping = false;
-                    player.y = block.y1 - player.yvel * deltaTime - 40;
+                    player.pos.y = block.y1 - player.vel.y * deltaTime - 40;
                 }
             }
         }
 
-        player.y += player.yvel * deltaTime;
-        player.x += player.xvel * deltaTime;
+        player.pos.y += player.vel.y * deltaTime;
+        player.pos.x += player.vel.x * deltaTime;
 
         player.lastTime = Date.now();
     }
-    io.sockets.emit('state', gameState);
   }, 1000 / 60);
+
+
+  setInterval(function() {
+    console.log(JSON.stringify(gameState));
+    io.sockets.emit('state', gameState);
+  }, 200);
