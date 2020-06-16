@@ -114,7 +114,7 @@ game_core.prototype.browser_update = function() {
     this.ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
     this.ctx.fillStyle = 'black';
-    console.log(this.players);
+    // console.log(this.players);
     for (var id in this.players) {
         // id is the server socket id, index of dictionary
         var player = this.players[id];
