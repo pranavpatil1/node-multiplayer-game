@@ -65,7 +65,7 @@ var movementQueue = [];
  * want an animation for jumping and falling (and landing?) and crouch
  */
 
-var game_core = function(game_instance, isServer){
+var game_core = function(game_instance){
     //Store the instance, if any
     this.instance = game_instance;
 
@@ -77,20 +77,23 @@ var game_core = function(game_instance, isServer){
 
     this.players = [];
 
-    if (isServer) {
-
-    } else {
-        this.load_images();
-        this.connect_to_server();
-        window.requestAnimationFrame(this.browser_update.bind(this));
-        setInterval(this.short_update.bind(this), 15);
-        this.socket.on('state', this.update_state.bind(this));
-    }
+    this.load_images();
+    this.connect_to_server();
+    window.requestAnimationFrame(this.browser_update.bind(this));
+    setInterval(this.short_update.bind(this), 15);
+    this.socket.on('state', this.update_state.bind(this));
 
 }; // game_core.constructor
 
 game_core.prototype.update_state = function(gameState) {
-    this.players = gameState.players;
+    // take each of the dicts returned and do this
+    for (var id in gameState.players) {
+        if (this.players[id] === undefined) {
+            this.players[id] = new client_player(gameState.players[id]);
+        } else {
+            this.players[id].update_vals(gameState.players[id]);
+        }
+    }
     this.blocks = gameState.blocks;
 };
 
@@ -111,11 +114,10 @@ game_core.prototype.browser_update = function() {
     this.ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
     this.ctx.fillStyle = 'black';
-    // console.log(this.players);
+    console.log(this.players);
     for (var id in this.players) {
         // id is the server socket id, index of dictionary
         var player = this.players[id];
-        console.log(player);
         player.draw(this, this.ctx);
     }
 
@@ -147,9 +149,8 @@ game_core.prototype.load_images = function() {
     this.images.walk.src = '/static/stickman_walk.png';
 };
 
-var character = function (character_instance) {
-    this.instance = character_instance;
 
+var client_player = function () {
     this.pos = {
         x: 300,
         y: 300
@@ -168,9 +169,12 @@ var character = function (character_instance) {
     this.facingRight = true; // to maintain graphics for xvel = 0
     this.lastTime = Date.now(); // used to calc deltaTime
     this.startTime = Date.now(); // used for animations (so not all synced up)
+    if (arguments.length > 0) {
+        this.update_vals(arguments[0]);
+    }
 }
 
-character.prototype.draw = function(game_core, context) {
+client_player.prototype.draw = function(game_core, context) {
     // walking if moving fast enough
     var walking = true;
     if (Math.abs(this.vel.x) < 50) {
@@ -202,12 +206,20 @@ character.prototype.draw = function(game_core, context) {
     }
 }
 
+client_player.prototype.update_vals = function(player) {
+    this.pos = player.pos;
+    this.vel = player.vel;
+    this.jumping = player.jumping;
+    this.lastTime = player.lastTime;
+    this.startTime = player.startTime;
+};
+
 //server side we set the 'game_core' class to a global type, so that it can use it anywhere.
 if( 'undefined' != typeof global ) {
     global.game_core = game_core;
-    global.character = character;
+    global.client_player = client_player;
     module.exports = {
         game_core,
-        character
+        client_player
     };
 }

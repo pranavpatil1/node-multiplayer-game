@@ -6,7 +6,7 @@ var game = {};
 window.onload = function(){
 
 	//Create our game client instance.
-	game = new game_core(game, false);
+	game = new game_core(game);
 	//Fetch the viewport
 	game.viewport = document.getElementById('viewport');
 	//Adjust their size
