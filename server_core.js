@@ -1,8 +1,10 @@
 "use strict";
 
-var server_core = function(game_instance){
+var server_core = function(game_instance, io){
     //Store the instance, if any
     this.instance = game_instance;
+
+    this.io = io;
 
     //Used in collision etc.
     this.world = {
@@ -34,40 +36,82 @@ var server_core = function(game_instance){
 /**
  * 60 FPS update of game state. does physics/collision
  */
-server_core.prototype.physics_loops = function () {
+
+server_core.prototype.physics_loops = function (socket) {
+    var speed = 200;
     for (var i in this.serverState.players) {
         var player = this.serverState.players[i];
-        var deltaTime = (Date.now() - player.lastTime)/1000;
 
-        // gravity
-        if (!player.collision.down) {
-          player.vel.y += 20;
-        }
+        var lastNum = -1;
+        for (var j in player.movementQueue) {
+            var movement = player.movementQueue[j];
+            var data = this.num_to_mvmt(movement.mvmt);
 
-        // assume no collisions unless found later
-        player.collision.down = false;
-
-        // collision detection with blocks
-
-        // needs to be falling (no upward, head-hitting collision)
-        if (player.vel.y >= 0) {
-            for (var j in this.serverState.blocks) {
-                var block = this.serverState.blocks[j];
-                // if the bottom of the player is passing the block in this frame
-                if ((player.pos.y + 40 <= block.y1) && (player.pos.y + 40 + player.vel.y * deltaTime >= block.y1) &&
-                        (player.pos.x + 11 > block.x1 && player.pos.x - 9 < block.x2)) {
-                    player.collision.down = true;
-                    player.vel.y = 0;
-                    player.jumping = false;
-                    player.pos.y = block.y1 - player.vel.y * deltaTime - 40;
+            // convert movement request into player action (jump, move left/right if allowed)
+            if (!(data.left ^ data.right)) {
+                player.vel.x = 0; // do nothing
+            } else if (data.left) { // only one of them! set velocity
+                player.vel.x = -speed;
+                player.facingRight = false;
+            } else if (data.right) {
+                player.vel.x = speed;
+                player.facingRight = true;
+            }
+            // on the ground. can initiate jump
+            if (player.collision.down) {
+                if (data.up) {
+                    player.vel.y = -speed * 4;
+                    player.jumping = true;
+                    player.collision.down = false;
                 }
             }
+
+            var deltaTime = (movement.t - player.lastTime)/1000;
+
+            // gravity
+            if (!player.collision.down) {
+                player.vel.y += 20;
+            }
+
+            // assume no collisions unless found later
+            player.collision.down = false;
+
+            // collision detection with blocks
+    
+            // needs to be falling (no upward, head-hitting collision)
+            if (player.vel.y >= 0) {
+                for (var j in this.serverState.blocks) {
+                    var block = this.serverState.blocks[j];
+                    // if the bottom of the player is passing the block in this frame
+                    if ((player.pos.y + 40 <= block.y1) && (player.pos.y + 40 + player.vel.y * deltaTime >= block.y1) &&
+                            (player.pos.x + 11 > block.x1 && player.pos.x - 9 < block.x2)) {
+                        player.collision.down = true;
+                        player.vel.y = 0;
+                        player.jumping = false;
+                        player.pos.y = block.y1 - player.vel.y * deltaTime - 40;
+                    }
+                }
+            }
+
+            player.pos.y += player.vel.y * deltaTime;
+            player.pos.x += player.vel.x * deltaTime;
+    
+            player.lastTime = movement.t;
+
+            lastNum = movement.num;
         }
 
-        player.pos.y += player.vel.y * deltaTime;
-        player.pos.x += player.vel.x * deltaTime;
 
-        player.lastTime = Date.now();
+        // remove everything we iterated through
+        // (should be everything, but not entirely sure. javascript is mysterious)
+        
+        if (player.movementQueue.length > 0)
+            player.movementQueue.splice(0, lastNum - player.movementQueue[0].num + 1);
+
+        this.publicState.players[i] = this.serverState.players[i].get_vals();
+
+        // i is socket id, also key in the players dictionary
+        this.io.to(i).emit("received", lastNum);
     }
 };
 
@@ -81,35 +125,27 @@ server_core.prototype.on_player_req = function(socket) {
     this.publicState.players[socket.id] = this.serverState.players[socket.id].get_vals();
 };
 
-server_core.prototype.on_input_received = function(data, socket) {
+server_core.prototype.mvmt_to_num = function (movement) {
+    return (movement.down * 8 + movement.up * 4 + movement.left * 2 + movement.right * 1);
+}
+
+server_core.prototype.num_to_mvmt = function (num) {
+    return {down: num & 8, up: num & 4, left: num & 2, right: num & 1}
+}
+
+server_core.prototype.on_input_received = function(dataQueue, socket) {
+    if (dataQueue.length == 0) {
+        return;
+    }
     var player = this.serverState.players[socket.id] || {};
     if (player.collision == undefined) {
-      return; // early exit, no player OOF
+        return; // early exit, no player OOF
     }
-    var speed = 200;
+    // concat doesn't edit array in place, just makes new array
+    player.movementQueue = player.movementQueue.concat(dataQueue);
 
-    // no input or both (cancel out)
-    if (!(data.left ^ data.right)) {
-      player.vel.x = 0; // do nothing
-    } else if (data.left) { // only one of them! set velocity
-      player.vel.x = -speed;
-      player.facingRight = false;
-    } else if (data.right) {
-      player.vel.x = speed;
-      player.facingRight = true;
-    }
-    
-    // on the ground. can initiate jump
-    if (player.collision.down) {
-      if (data.up) {
-        player.vel.y = -speed * 4;
-        player.jumping = true;
-        player.collision.down = false;
-      }
-    }
-    this.publicState.players[socket.id] = this.serverState.players[socket.id].get_vals();
+    // don't do anything with this yet. let the physics loop handle it
 };
-
 
 var server_player = function (character_instance) {
     this.instance = character_instance;
@@ -131,6 +167,8 @@ var server_player = function (character_instance) {
     };
     this.lastTime = Date.now(); // used to calc deltaTime
     this.startTime = Date.now(); // used for animations (so not all synced up)
+
+    this.movementQueue = [];
 
 }
 

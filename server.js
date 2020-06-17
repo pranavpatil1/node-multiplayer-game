@@ -25,7 +25,7 @@ server.listen(port, function() {
     console.log('Starting server on port ' + port);
 });
 
-var game = new server_core(game);
+var game = new server_core(game, io);
 
 // maintains the current set of socket connections
 io.on('connection', function(socket) {

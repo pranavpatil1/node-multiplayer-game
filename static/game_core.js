@@ -1,65 +1,5 @@
 "use strict";
 
-/*
-
-// stores which keys are pressed (either WASD or arrow keys)
-var movement = {
-    up: false,
-    down: false,
-    left: false,
-    right: false
-}
-
-document.addEventListener('keydown', function(event) {
-    switch (event.keyCode) {
-    case 37: // left arrow
-    case 65: // A
-        movement.left = true;
-        break;
-    case 38: // up arrow
-    case 87: // W
-        movement.up = true;
-        break;
-    case 39: // right arrow
-    case 68: // D
-        movement.right = true;
-        break;
-    case 40: // down arrow
-    case 83: // S
-        movement.down = true;
-        break;
-    }
-  });
-  document.addEventListener('keyup', function(event) {
-    switch (event.keyCode) {
-    case 37: // left arrow
-    case 65: // A
-        movement.left = false;
-        break;
-    case 38: // up arrow
-    case 87: // W
-        movement.up = false;
-        break;
-    case 39: // right arrow
-    case 68: // D
-        movement.right = false;
-        break;
-    case 40: // down arrow
-    case 83: // S
-        movement.down = false;
-        break;
-    }
-  });
-
-var mvmtToNum = function(movement) {
-    return (movement.down * 8 + movement.up * 4 + movement.left * 2 + movement.right * 1);
-}
-
-var numToMvmt = function(num) {
-    return {down: num & 8, up: num & 4, left: num & 2, right: num & 1}
-}
-
-var movementQueue = [];
 
 /**
  * want an animation for jumping and falling (and landing?) and crouch
@@ -77,11 +17,24 @@ var game_core = function(game_instance){
 
     this.players = [];
 
+    this.movementQueue = [];
+    this.movementNum = 0;
+
+    // stores which keys are pressed (either WASD or arrow keys)
+    this.movement = {
+        up: false,
+        down: false,
+        left: false,
+        right: false
+    }
+    
     this.load_images();
+    this.setup_keybinds();
     this.connect_to_server();
     window.requestAnimationFrame(this.browser_update.bind(this));
-    setInterval(this.short_update.bind(this), 15);
+    setInterval(this.short_update.bind(this), 100);
     this.socket.on('state', this.update_state.bind(this));
+    this.socket.on('received', this.on_movement_received.bind(this));
 
 }; // game_core.constructor
 
@@ -97,12 +50,87 @@ game_core.prototype.update_state = function(gameState) {
     this.blocks = gameState.blocks;
 };
 
+game_core.prototype.on_movement_received = function (num) {
+    if (this.movementQueue.length > 0 && num !== -1) {
+        var first = this.movementQueue[0].num;
+        this.movementQueue.splice(0, num - first + 1);
+    }
+}
+
 game_core.prototype.setup_keybinds = function() {
+    document.addEventListener('keydown', function(event) {
+        switch (event.keyCode) {
+        case 37: // left arrow
+        case 65: // A
+            this.movement.left = true;
+            break;
+        case 38: // up arrow
+        case 87: // W
+            this.movement.up = true;
+            break;
+        case 39: // right arrow
+        case 68: // D
+            this.movement.right = true;
+            break;
+        case 40: // down arrow
+        case 83: // S
+            this.movement.down = true;
+            break;
+        }
+    }.bind(this));
+    document.addEventListener('keyup', function(event) {
+        switch (event.keyCode) {
+        case 37: // left arrow
+        case 65: // A
+            this.movement.left = false;
+            break;
+        case 38: // up arrow
+        case 87: // W
+            this.movement.up = false;
+            break;
+        case 39: // right arrow
+        case 68: // D
+            this.movement.right = false;
+            break;
+        case 40: // down arrow
+        case 83: // S
+            this.movement.down = false;
+            break;
+        }
+    }.bind(this));
 
 };
 
-game_core.prototype.browser_update = function() {
+game_core.prototype.mvmt_to_num = function (movement) {
+    return (movement.down * 8 + movement.up * 4 + movement.left * 2 + movement.right * 1);
+}
 
+game_core.prototype.num_to_mvmt = function (num) {
+    return {down: num & 8, up: num & 4, left: num & 2, right: num & 1}
+}
+
+game_core.prototype.browser_update = function() {
+    this.movementQueue.push(
+        {
+            num: this.movementNum,
+            t: Date.now(),
+            mvmt: this.mvmt_to_num(this.movement)
+        }
+    );
+    this.movementNum ++;
+    this.draw_world();
+    requestAnimationFrame(this.browser_update.bind(this));
+};
+
+game_core.prototype.short_update = function() {
+    if (document.hasFocus()) {
+        this.socket.emit('movement', this.movementQueue);
+        if (this.movementQueue.length > 0)
+            console.log(this.movementQueue[this.movementQueue.length - 1].mvmt);
+    }
+};
+
+game_core.prototype.draw_world = function () {
     this.ctx.clearRect(0, 0, this.world.width, this.world.height);
 
     // updates the width of the canvas to match the window size (every frame)
@@ -113,26 +141,16 @@ game_core.prototype.browser_update = function() {
     this.ctx.fillStyle = 'rgb(125,200,225)';
     this.ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
-    this.ctx.fillStyle = 'black';
-    // console.log(this.players);
     for (var id in this.players) {
-        // id is the server socket id, index of dictionary
         var player = this.players[id];
         player.draw(this, this.ctx);
     }
 
-    // assumes a constant y value for now, places a 10px rectangle for blocks
+    // assumes a constant y value for now, places a 10px tall rectangle for blocks
     this.ctx.fillStyle = 'black';
     for (var id in this.blocks) {
         var block = this.blocks[id];
         this.ctx.fillRect(block.x1, block.y1, block.x2-block.x1, block.y2-block.y1 + 10);
-    }
-    requestAnimationFrame(this.browser_update.bind(this));
-};
-
-game_core.prototype.short_update = function() {
-    if (document.hasFocus()) {
-        // this.socket.emit('movement', {});
     }
 };
 
