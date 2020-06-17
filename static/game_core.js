@@ -32,7 +32,7 @@ var game_core = function(game_instance){
     this.setup_keybinds();
     this.connect_to_server();
     window.requestAnimationFrame(this.browser_update.bind(this));
-    setInterval(this.short_update.bind(this), 100);
+    setInterval(this.short_update.bind(this), 200);
     this.socket.on('state', this.update_state.bind(this));
     this.socket.on('received', this.on_movement_received.bind(this));
 
@@ -199,6 +199,14 @@ client_player.prototype.draw = function(game_core, context) {
         walking = false;
     }
 
+    // don't change anything if no x velocity
+    if (this.vel.x > 0) {
+        this.facingRight = true;
+    }
+    if (this.vel.x < 0) {
+        this.facingRight = false;
+    }
+
     // determine which spritesheet to use and whether to transform (for flipping image left/right)
     if (walking) {
         var state = 2 + Math.abs(Math.floor((Date.now() - this.startTime)/100) % 4);// -2 -1 0 1 2 3
@@ -228,9 +236,12 @@ client_player.prototype.update_vals = function(player) {
     this.pos = player.pos;
     this.vel = player.vel;
     this.jumping = player.jumping;
+    this.collision = player.collision;
     this.lastTime = player.lastTime;
     this.startTime = player.startTime;
 };
+
+/*
 
 //server side we set the 'game_core' class to a global type, so that it can use it anywhere.
 if( 'undefined' != typeof global ) {
@@ -241,3 +252,5 @@ if( 'undefined' != typeof global ) {
         client_player
     };
 }
+
+*/

@@ -70,7 +70,7 @@ server_core.prototype.physics_loops = function (socket) {
 
             // gravity
             if (!player.collision.down) {
-                player.vel.y += 20;
+                player.vel.y += 1200 * deltaTime;
             }
 
             // assume no collisions unless found later
@@ -100,7 +100,6 @@ server_core.prototype.physics_loops = function (socket) {
 
             lastNum = movement.num;
         }
-
 
         // remove everything we iterated through
         // (should be everything, but not entirely sure. javascript is mysterious)
@@ -177,6 +176,7 @@ server_player.prototype.get_vals = function(gameState) {
         pos: this.pos,
         vel: this.vel,
         jumping: this.jumping,
+        collision: this.collision,
         lastTime: this.lastTime,
         startTime: this.startTime
     };
