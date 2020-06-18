@@ -34,7 +34,7 @@ var game_core = function(game_instance){
     window.requestAnimationFrame(this.browser_update.bind(this));
     setInterval(this.short_update.bind(this), 200);
     this.socket.on('state', this.update_state.bind(this));
-    this.socket.on('received', this.on_movement_received.bind(this));
+    // this.socket.on('received', this.on_movement_received.bind(this));
 
 }; // game_core.constructor
 
@@ -48,14 +48,13 @@ game_core.prototype.update_state = function(gameState) {
         }
     }
     this.blocks = gameState.blocks;
-};
 
-game_core.prototype.on_movement_received = function (num) {
-    if (this.movementQueue.length > 0 && num !== -1) {
+    if (this.movementQueue.length > 0 && gameState.players[this.socket.id] !== undefined && 
+            gameState.players[this.socket.id].lastNum !== -1) {
         var first = this.movementQueue[0].num;
-        this.movementQueue.splice(0, num - first + 1);
+        this.movementQueue.splice(0, gameState.players[this.socket.id].lastNum - first + 1);
     }
-}
+};
 
 game_core.prototype.setup_keybinds = function() {
     document.addEventListener('keydown', function(event) {
@@ -124,9 +123,9 @@ game_core.prototype.browser_update = function() {
 
 game_core.prototype.short_update = function() {
     if (document.hasFocus()) {
-        this.socket.emit('movement', this.movementQueue);
+        this.socket.emit('movement', this.movementQueue);/*
         if (this.movementQueue.length > 0)
-            console.log(this.movementQueue[this.movementQueue.length - 1].mvmt);
+            console.log(this.movementQueue[this.movementQueue.length - 1].mvmt);*/
     }
 };
 
@@ -238,6 +237,7 @@ client_player.prototype.update_vals = function(player) {
     this.jumping = player.jumping;
     this.collision = player.collision;
     this.lastTime = player.lastTime;
+    this.lastNum = player.lastNum;
     this.startTime = player.startTime;
 };
 

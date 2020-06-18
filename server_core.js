@@ -39,10 +39,15 @@ var server_core = function(game_instance, io){
 
 server_core.prototype.physics_loops = function (socket) {
     var speed = 200;
+
     for (var i in this.serverState.players) {
         var player = this.serverState.players[i];
 
-        var lastNum = -1;
+        var lastNum = player.lastNum;
+
+        if (player.movementQueue.length > 0 && player.lastNum > player.movementQueue[0].num)
+            player.movementQueue.splice(0, player.lastNum - player.movementQueue[0].num + 1);
+
         for (var j in player.movementQueue) {
             var movement = player.movementQueue[j];
             var data = this.num_to_mvmt(movement.mvmt);
@@ -110,7 +115,9 @@ server_core.prototype.physics_loops = function (socket) {
         this.publicState.players[i] = this.serverState.players[i].get_vals();
 
         // i is socket id, also key in the players dictionary
-        this.io.to(i).emit("received", lastNum);
+        // this.io.to(i).emit("received", lastNum);
+
+        player.lastNum = lastNum;
     }
 };
 
@@ -168,7 +175,7 @@ var server_player = function (character_instance) {
     this.startTime = Date.now(); // used for animations (so not all synced up)
 
     this.movementQueue = [];
-
+    this.lastNum = -1; // last queue seq num read
 }
 
 server_player.prototype.get_vals = function(gameState) {
@@ -178,6 +185,7 @@ server_player.prototype.get_vals = function(gameState) {
         jumping: this.jumping,
         collision: this.collision,
         lastTime: this.lastTime,
+        lastNum: this.lastNum,
         startTime: this.startTime
     };
 };
