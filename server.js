@@ -46,4 +46,4 @@ io.on('connection', function(socket) {
 
 setInterval(function() {
     io.sockets.emit('state', game.publicState);
-}.bind(this), 200);
+}.bind(this), 500);

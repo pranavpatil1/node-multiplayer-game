@@ -48,6 +48,10 @@ server_core.prototype.physics_loops = function (socket) {
         if (player.movementQueue.length > 0 && player.lastNum > player.movementQueue[0].num)
             player.movementQueue.splice(0, player.lastNum - player.movementQueue[0].num + 1);
 
+        if (player.movementQueue.length > 0) {
+            // console.log(player.movementQueue[0].t - player.lastTime);
+        }
+
         for (var j in player.movementQueue) {
             var movement = player.movementQueue[j];
             var data = this.num_to_mvmt(movement.mvmt);
@@ -113,9 +117,6 @@ server_core.prototype.physics_loops = function (socket) {
             player.movementQueue.splice(0, lastNum - player.movementQueue[0].num + 1);
 
         this.publicState.players[i] = this.serverState.players[i].get_vals();
-
-        // i is socket id, also key in the players dictionary
-        // this.io.to(i).emit("received", lastNum);
 
         player.lastNum = lastNum;
     }

@@ -17,6 +17,8 @@ var game_core = function(game_instance){
 
     this.players = [];
 
+    this.client;
+
     this.movementQueue = [];
     this.movementNum = 0;
 
@@ -32,9 +34,8 @@ var game_core = function(game_instance){
     this.setup_keybinds();
     this.connect_to_server();
     window.requestAnimationFrame(this.browser_update.bind(this));
-    setInterval(this.short_update.bind(this), 200);
+    setInterval(this.short_update.bind(this), 500);
     this.socket.on('state', this.update_state.bind(this));
-    // this.socket.on('received', this.on_movement_received.bind(this));
 
 }; // game_core.constructor
 
@@ -53,7 +54,10 @@ game_core.prototype.update_state = function(gameState) {
             gameState.players[this.socket.id].lastNum !== -1) {
         var first = this.movementQueue[0].num;
         this.movementQueue.splice(0, gameState.players[this.socket.id].lastNum - first + 1);
+        // console.log("START:", first);
+        // console.log("NEW:", (this.movementQueue[0] || {}).num);
     }
+    // console.log('update state');
 };
 
 game_core.prototype.setup_keybinds = function() {
@@ -117,15 +121,86 @@ game_core.prototype.browser_update = function() {
         }
     );
     this.movementNum ++;
+
+    this.simulate_physics();
     this.draw_world();
     requestAnimationFrame(this.browser_update.bind(this));
 };
 
+game_core.prototype.simulate_physics = function() {
+    if (this.client == undefined) return;
+    if (this.players[this.socket.id] == undefined) return;
+    if (this.movementQueue.length == 0) return;
+
+    var player = this.client;
+    player.update_vals(this.players[this.socket.id]);
+
+    var speed = 200;
+
+    var lastNum = player.lastNum;
+
+    // console.log(this.movementQueue[this.movementQueue.length - 1].t);
+
+    for (var j in this.movementQueue) {
+        var movement = this.movementQueue[j];
+        var data = this.num_to_mvmt(movement.mvmt);
+
+        // convert movement request into player action (jump, move left/right if allowed)
+        if (!(data.left ^ data.right)) {
+            player.vel.x = 0; // do nothing
+        } else if (data.left) { // only one of them! set velocity
+            player.vel.x = -speed;
+            player.facingRight = false;
+        } else if (data.right) {
+            player.vel.x = speed;
+            player.facingRight = true;
+        }
+        // on the ground. can initiate jump
+        if (player.collision.down) {
+            if (data.up) {
+                player.vel.y = -speed * 4;
+                player.jumping = true;
+                player.collision.down = false;
+            }
+        }
+
+        var deltaTime = (movement.t - player.lastTime)/1000;
+
+        // gravity
+        if (!player.collision.down) {
+            player.vel.y += 1200 * deltaTime;
+        }
+
+        // assume no collisions unless found later
+        player.collision.down = false;
+
+        // collision detection with blocks
+
+        // needs to be falling (no upward, head-hitting collision)
+        if (player.vel.y >= 0) {
+            for (var j in this.blocks) {
+                var block = this.blocks[j];
+                // if the bottom of the player is passing the block in this frame
+                if ((player.pos.y + 40 <= block.y1) && (player.pos.y + 40 + player.vel.y * deltaTime >= block.y1) &&
+                        (player.pos.x + 11 > block.x1 && player.pos.x - 9 < block.x2)) {
+                    player.collision.down = true;
+                    player.vel.y = 0;
+                    player.jumping = false;
+                    player.pos.y = block.y1 - player.vel.y * deltaTime - 40;
+                }
+            }
+        }
+
+        player.pos.y += player.vel.y * deltaTime;
+        player.pos.x += player.vel.x * deltaTime;
+
+        player.lastTime = movement.t;
+    }
+};
+
 game_core.prototype.short_update = function() {
     if (document.hasFocus()) {
-        this.socket.emit('movement', this.movementQueue);/*
-        if (this.movementQueue.length > 0)
-            console.log(this.movementQueue[this.movementQueue.length - 1].mvmt);*/
+        this.socket.emit('movement', this.movementQueue);
     }
 };
 
@@ -142,7 +217,11 @@ game_core.prototype.draw_world = function () {
 
     for (var id in this.players) {
         var player = this.players[id];
-        player.draw(this, this.ctx);
+        if (id == this.socket.id) {
+            this.client.draw(this, this.ctx);
+        } else {
+            player.draw(this, this.ctx);
+        }
     }
 
     // assumes a constant y value for now, places a 10px tall rectangle for blocks
@@ -156,6 +235,7 @@ game_core.prototype.draw_world = function () {
 game_core.prototype.connect_to_server = function() {
     this.socket = io();
     this.socket.emit('new player');
+    this.client = new client_player();
 };
 
 game_core.prototype.load_images = function() {
@@ -165,7 +245,6 @@ game_core.prototype.load_images = function() {
     this.images.walk = new Image();
     this.images.walk.src = '/static/stickman_walk.png';
 };
-
 
 var client_player = function () {
     this.pos = {
@@ -186,6 +265,8 @@ var client_player = function () {
     this.facingRight = true; // to maintain graphics for xvel = 0
     this.lastTime = Date.now(); // used to calc deltaTime
     this.startTime = Date.now(); // used for animations (so not all synced up)
+    this.walking = true;
+    
     if (arguments.length > 0) {
         this.update_vals(arguments[0]);
     }
@@ -193,9 +274,9 @@ var client_player = function () {
 
 client_player.prototype.draw = function(game_core, context) {
     // walking if moving fast enough
-    var walking = true;
+    this.walking = true;
     if (Math.abs(this.vel.x) < 50) {
-        walking = false;
+        this.walking = false;
     }
 
     // don't change anything if no x velocity
@@ -207,7 +288,7 @@ client_player.prototype.draw = function(game_core, context) {
     }
 
     // determine which spritesheet to use and whether to transform (for flipping image left/right)
-    if (walking) {
+    if (this.walking) {
         var state = 2 + Math.abs(Math.floor((Date.now() - this.startTime)/100) % 4);// -2 -1 0 1 2 3
         if (this.facingRight) {
             context.resetTransform();
@@ -232,25 +313,22 @@ client_player.prototype.draw = function(game_core, context) {
 }
 
 client_player.prototype.update_vals = function(player) {
-    this.pos = player.pos;
-    this.vel = player.vel;
+    this.pos = {
+        x: player.pos.x,
+        y: player.pos.y
+    };
+    this.vel = {
+        x: player.vel.x,
+        y: player.vel.y
+    };
     this.jumping = player.jumping;
-    this.collision = player.collision;
+    this.collision = {
+        up: player.collision.up,
+        down: player.collision.down,
+        left: player.collision.left,
+        right: player.collision.right
+    };
     this.lastTime = player.lastTime;
     this.lastNum = player.lastNum;
     this.startTime = player.startTime;
 };
-
-/*
-
-//server side we set the 'game_core' class to a global type, so that it can use it anywhere.
-if( 'undefined' != typeof global ) {
-    global.game_core = game_core;
-    global.client_player = client_player;
-    module.exports = {
-        game_core,
-        client_player
-    };
-}
-
-*/
