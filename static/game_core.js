@@ -104,11 +104,19 @@ game_core.prototype.setup_keybinds = function() {
 
 };
 
-game_core.prototype.mvmt_to_num = function (movement) {
+/**
+ * playing with static methods, representing dictionary with 4 booleans as binary bits in number
+ * note: has no practical advantage as data is sent as a string, done for fun
+ */
+game_core.mvmt_to_num = function (movement) {
     return (movement.down * 8 + movement.up * 4 + movement.left * 2 + movement.right * 1);
 }
 
-game_core.prototype.num_to_mvmt = function (num) {
+/**
+ * playing with static methods, converting number (4 binary bits) to 4 booleans in dictionary
+ * note: has no practical advantage as data is sent as a string, done for fun
+ */
+game_core.num_to_mvmt = function (num) {
     return {down: num & 8, up: num & 4, left: num & 2, right: num & 1}
 }
 
@@ -117,7 +125,7 @@ game_core.prototype.browser_update = function() {
         {
             num: this.movementNum,
             t: Date.now(),
-            mvmt: this.mvmt_to_num(this.movement)
+            mvmt: game_core.mvmt_to_num(this.movement)
         }
     );
     this.movementNum ++;
@@ -143,7 +151,7 @@ game_core.prototype.simulate_physics = function() {
 
     for (var j in this.movementQueue) {
         var movement = this.movementQueue[j];
-        var data = this.num_to_mvmt(movement.mvmt);
+        var data = game_core.num_to_mvmt(movement.mvmt);
 
         // convert movement request into player action (jump, move left/right if allowed)
         if (!(data.left ^ data.right)) {
@@ -219,9 +227,9 @@ game_core.prototype.draw_world = function () {
         var player = this.players[id];
         if (id == this.socket.id) {
             this.client.draw(this, this.ctx);
-        } else {
-            player.draw(this, this.ctx);
         }
+           player.draw(this, this.ctx);
+        
     }
 
     // assumes a constant y value for now, places a 10px tall rectangle for blocks
