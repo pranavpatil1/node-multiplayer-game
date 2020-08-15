@@ -4,4 +4,4 @@ This repository is a basic node.js game. It uses HTML5 canvas and a simple inter
 
 This project is organized using OOP. 
 
-Interesting algorithms being used are client prediction and server interpolation (to be completed).
+Interesting algorithms being used are client prediction and server interpolation
