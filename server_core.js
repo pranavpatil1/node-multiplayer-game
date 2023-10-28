@@ -54,6 +54,8 @@ server_core.prototype.physics_loops = function (socket) {
 
         for (var j in player.movementQueue) {
             var movement = player.movementQueue[j];
+            player.lastMovement = movement;
+
             var data = this.num_to_mvmt(movement.mvmt);
 
             // convert movement request into player action (jump, move left/right if allowed)
@@ -177,6 +179,8 @@ var server_player = function (character_instance) {
 
     this.movementQueue = [];
     this.lastNum = -1; // last queue seq num read
+
+    this.lastMovement = null;
 }
 
 server_player.prototype.get_vals = function(gameState) {
@@ -187,7 +191,8 @@ server_player.prototype.get_vals = function(gameState) {
         collision: this.collision,
         lastTime: this.lastTime,
         lastNum: this.lastNum,
-        startTime: this.startTime
+        startTime: this.startTime,
+        lastMovement: this.lastMovement
     };
 };
 
